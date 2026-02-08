@@ -23,6 +23,21 @@ class Db():
 
         self.folded    = self.init_folded()
 
+    def add_song_to_list(self, list):
+        if list == "":
+            return
+        file_id = self.main.widget.detail_widgets[0].text()
+
+        self.cursor.execute('SELECT id FROM LISTS WHERE name = "' + list + '"')
+        list_id = self.cursor.fetchone()[0]
+
+        self.cursor.execute('SELECT COUNT(*) FROM LIST_CONTENT WHERE list_id="' + str(list_id) + \
+                            '" AND file_id="' + str(file_id) + '"')
+        exists = self.cursor.fetchone()[0] > 0
+        if not exists:
+            self.cursor.execute('INSERT INTO LIST_CONTENT (list_id, file_id) VALUES ("' + \
+                                str(list_id) + '","' + str(file_id) + '")')
+            self.conn.commit()            
     def check_database(self):
         if not os.path.isdir(self.dir):
             os.makedirs(self.dir)
@@ -58,7 +73,6 @@ class Db():
             CREATE TABLE IF NOT EXISTS LIST_CONTENT (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 list_id     INTEGER NOT NULL,
-                list_lfdnr  INTEGER NOT NULL,
                 file_id     INTEGER NOT NULL,
                 FOREIGN KEY (file_id) REFERENCES FILES(id),
                 FOREIGN KEY (list_id) REFERENCES LISTS(id)
@@ -66,7 +80,7 @@ class Db():
         """)
         self.conn.commit()
     def create_list(self):
-        name, ok = QInputDialog.getText(self, \
+        name, ok = QInputDialog.getText(self.main, \
                                             "Neuer Listenname", \
                                             "Bitte geben Sie den Namen der neuen Liste ein" \
                                             )
@@ -78,7 +92,7 @@ class Db():
             else:
                 self.cursor.execute("INSERT INTO LISTS (name) VALUES ('" + name + "')")
                 self.conn.commit()
-        self.update_criteria()
+        self.main.update_criteria()
     def delete_song_in_db(self, file_id):
         self.cursor.execute("DELETE FROM TAGS WHERE file_id = '" + str(file_id) + "'")
         self.cursor.execute("DELETE FROM FILES WHERE id = '" + str(file_id) + "'")
@@ -172,6 +186,32 @@ class Db():
         self.cursor.execute("SELECT file_path, file_name, vote FROM FILES WHERE id = '" + str(file_id) + "'")
         res = self.cursor.fetchall()
         return res[0][0] + os.sep + res[0][1], res[0][2]
+    def get_file_ids_for_criteria(self, section, listname):
+        arr = []
+        if section == "own":
+            self.cursor.execute('SELECT LIST_CONTENT.file_id FROM LIST_CONTENT JOIN LISTS ' + \
+                                'ON LISTS.id=LIST_CONTENT.list_id AND LISTS.name = "' + listname + \
+                                '" ORDER BY LIST_CONTENT.id')
+            arr = self.cursor.fetchall()
+
+        elif section == "vote":
+            if listname == 'NULL':
+                self.cursor.execute("SELECT id FROM FILES WHERE vote IS NULL ORDER BY RANDOM() LIMIT 100")
+            else:
+                self.cursor.execute("SELECT id FROM FILES WHERE vote = " + listname)
+            arr = self.cursor.fetchall()
+            # self.widget.fill_table_lines(arr)
+
+        else:
+            if listname == 'NULL':
+                self.cursor.execute('SELECT FILES.id FROM FILES LEFT JOIN TAGS ' + \
+                                    'ON FILES.id=TAGS.file_id AND TAGS.tag_key="' + section + \
+                                    '" WHERE TAGS.file_id IS NULL ORDER BY FILES.id LIMIT 100')
+                                    # '" WHERE TAGS.file_id IS NULL ORDER BY RANDOM() LIMIT 100')
+            else:
+                self.cursor.execute('SELECT file_id FROM TAGS WHERE tag_key = "' + section + '" AND tag_value LIKE "%' + listname + '%"') 
+            arr = self.cursor.fetchall()
+        return arr
     def get_fold_sign(self, status):
         if status == "is_open":
             sign = "ᐃ"
@@ -220,6 +260,12 @@ class Db():
 
         html = html + "</body></html>"                         # Page Extro #
         return html
+    def get_own_lists(self):
+        self.cursor.execute("SELECT name FROM LISTS ORDER BY name") 
+        ret = [""]
+        for row in self.cursor.fetchall():
+            ret.append(row[0])
+        return ret
     def get_tags_of_file(self, file_id):
         self.cursor.execute("SELECT tag_key, tag_value FROM TAGS WHERE file_id = '" + str(file_id) + "'") 
         return self.cursor.fetchall()
@@ -240,29 +286,6 @@ class Db():
             if not os.path.exists(filename_long):
                 print(filename_long)
                 self.delete_song_in_db(row[0])
-    def get_file_ids_for_criteria(self, section, listname):
-        arr = []
-        if section == "own":
-            pass
-
-        elif section == "vote":
-            if listname == 'NULL':
-                self.cursor.execute("SELECT id FROM FILES WHERE vote IS NULL ORDER BY RANDOM() LIMIT 100")
-            else:
-                self.cursor.execute("SELECT id FROM FILES WHERE vote = " + listname)
-            arr = self.cursor.fetchall()
-            # self.widget.fill_table_lines(arr)
-
-        else:
-            if listname == 'NULL':
-                self.cursor.execute('SELECT FILES.id FROM FILES LEFT JOIN TAGS ' + \
-                                    'ON FILES.id=TAGS.file_id AND TAGS.tag_key="' + section + \
-                                    '" WHERE TAGS.file_id IS NULL ORDER BY FILES.id LIMIT 100')
-                                    # '" WHERE TAGS.file_id IS NULL ORDER BY RANDOM() LIMIT 100')
-            else:
-                self.cursor.execute('SELECT file_id FROM TAGS WHERE tag_key = "' + section + '" AND tag_value LIKE "%' + listname + '%"') 
-            arr = self.cursor.fetchall()
-        return arr
     def scan_files(self):
         directory = QFileDialog.getExistingDirectory(
             self,

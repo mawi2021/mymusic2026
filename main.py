@@ -4,10 +4,11 @@ from classes.MainWidget   import MainWidget, MainWindowMenu
 from classes.Db           import Db
 
 # NEXT:
-# - Kriterium: Anker in der Seite bei jedem Kriterium, dass beim Folding nicht immemr oben startet
+# - Kriterium: Eigene Listen füllen (wie?)
+# - Details: Intensiver auf Internetseiten nach weiteren Infos zum Titel suchen
 
 # ToDo:
-# - Kriterium: Eigene Listen füllen (wie?)
+# - Kriterium: Anker in der Seite bei jedem Kriterium, dass beim Folding nicht immemr oben startet
 # - Kriterium: Suche
 # - Kriterium: Checkboxen bei den (ausgeklappten) Kriterien
 # - Tabelle: Anzeige, was man ausgewählt hat (Welche Liste)

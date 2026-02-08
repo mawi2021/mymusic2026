@@ -20,6 +20,7 @@ class MainWidget(QWidget):
         self.buttons        = QWidget()
         self.slider         = QSlider(Qt.Orientation.Horizontal)
         self.slider_label   = QLabel("--:--")
+        self.combo_own      = None
 
         self.player         = QMediaPlayer()
         self.audio          = QAudioOutput(self)
@@ -185,14 +186,22 @@ class MainWidget(QWidget):
         form_layout = QFormLayout(content)
         form_layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        # First row: stars for voting #
+        # First row: stars for voting and DropDown for own lists #
         btn_layout = QHBoxLayout()
         # btn_layout.addStretch(1)
         for i in range(1, 6):
             btn = self.create_button("star3.png", partial(self.on_vote, i), 32)
             self.vote_list.append(btn)
             btn_layout.addWidget(btn)
-        # btn_layout.addStretch(1)
+        btn_layout.addStretch(1)
+
+        self.combo_own = QComboBox()
+        own_lists = self.db.get_own_lists()
+        self.combo_own.addItems(own_lists)
+        self.combo_own.currentTextChanged.connect(self.db.add_song_to_list)
+        btn_layout.addWidget(QLabel("Füge Lied zur Liste hinzu"))
+        btn_layout.addWidget(self.combo_own)
+
         form_layout.addRow(btn_layout)
 
         # Other rows #
