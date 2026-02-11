@@ -33,7 +33,8 @@ class MainWidget(QWidget):
         self.detail_widgets = []
         self.detail_fields  = ["file_id", "filename_long", "dauer", "tracknumber", "album", "artist", 
                               "title", "date", "genre", "language", "others"]
-        self.languages      = ["", "Englisch", "Deutsch", "Französisch", "Italienisch", "Latein", "Spanisch", "Yolngu", "Andere Sprache"]
+        self.languages      = ["", "Englisch", "Deutsch", "Französisch", "Italienisch", "Latein",
+                               "Spanisch", "Ukrainisch", "Yolngu", "Andere Sprache"]
         self.vote_list      = []
         self.init_UI()
 
@@ -55,6 +56,8 @@ class MainWidget(QWidget):
             else:
                 self.vote_list[i].setIcon(QIcon("icons" + os.sep + "star3.png"))
 
+        self.combo_own.setCurrentIndex(0)
+
         self.detail_widgets[0].setText(self.detail_values["file_id"])
         self.detail_widgets[1].setText(self.detail_values["filename_long"])
         self.detail_widgets[2].setText(self.detail_values["dauer"])
@@ -67,6 +70,10 @@ class MainWidget(QWidget):
 
         self.detail_widgets[9].setCurrentIndex(self.languages.index(self.detail_values["language"]))
         self.detail_widgets[10].setPlainText(self.detail_values["others"])
+    def fill_genre(self, value):
+        idx = self.detail_fields.index("genre")
+        self.detail_widgets[idx].setText(value)
+        self.detail_values[idx] = value
     def fill_table_lines(self, arr):
         self.table.clearContents()
         self.table.setRowCount(len(arr))
@@ -92,6 +99,9 @@ class MainWidget(QWidget):
                     self.table.setItem(cnt, 5, QTableWidgetItem(line[1]))
                 
         self.table.resizeColumnsToContents()      
+    def get_file_id(self):
+        idx = self.detail_fields.index("file_id")
+        return self.detail_widgets[idx].text()
     def init_UI(self):
         # Create parts of the page #
         self.init_UI_buttons()
@@ -196,8 +206,7 @@ class MainWidget(QWidget):
         btn_layout.addStretch(1)
 
         self.combo_own = QComboBox()
-        own_lists = self.db.get_own_lists()
-        self.combo_own.addItems(own_lists)
+        self.update_details_combo()
         self.combo_own.currentTextChanged.connect(self.db.add_song_to_list)
         btn_layout.addWidget(QLabel("Füge Lied zur Liste hinzu"))
         btn_layout.addWidget(self.combo_own)
@@ -269,7 +278,7 @@ class MainWidget(QWidget):
         section, listname = el_str.split("_", 2)
         if section == "criterium": 
             self.db.toggle_fold(listname)
-            self.main.update_criteria()
+            self.update_criteria()
         else:
             arr = self.db.get_file_ids_for_criteria(section, listname)
             self.fill_table_lines(arr)
@@ -377,7 +386,7 @@ class MainWidget(QWidget):
             self.detail_values = self.db.get_details(file_id)
             self.fill_details()
         except Exception as e:
-            print("ERROR in on_table_clicked()" + str(e) + " => " + filename_long)
+            print("ERROR in on_table_clicked() " + str(e) + " => " + filename_long)
     def on_vote(self, vote):
         self.db.set_vote(self.detail_widgets[0].text(), vote)
 
@@ -388,6 +397,13 @@ class MainWidget(QWidget):
                 self.vote_list[i].setIcon(QIcon("icons" + os.sep + "star3.png"))
     def set_criteria_html(self, html):
         self.criteria.setHtml(html)
+    def update_criteria(self):
+        html = self.db.get_html()
+        self.set_criteria_html(html)
+    def update_details_combo(self):
+        self.combo_own.clear()
+        own_lists = self.db.get_own_lists()
+        self.combo_own.addItems(own_lists)
     def update_table(self, file_id, cnt, value):
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 6)
@@ -401,10 +417,11 @@ class MainWidget(QWidget):
                 break
 
 class MainWindowMenu(QMenuBar):
-    def __init__(self, main, db):
+    def __init__(self, main, db, widget):
         super().__init__()
-        self.main = main
-        self.db   = db
+        self.main   = main
+        self.db     = db
+        self.widget = widget
 
         # ----- D A T A B A S E ----------------------------------------------------------------- #
         self.db_menu = self.addMenu("Datenbank")
@@ -422,17 +439,21 @@ class MainWindowMenu(QMenuBar):
         self.db_menu.addAction(self.db_no_file_action)
 
         # ----- L I S T S ----------------------------------------------------------------------- #
-        self.listMenu = self.addMenu("Listen")
+        self.list_menu = self.addMenu("Listen")
 
-        self.createListAction = QAction("Neu", self)
-        self.createListAction.triggered.connect(self.db.create_list)
-        self.listMenu.addAction(self.createListAction)
+        self.create_list_action = QAction("Neu", self)
+        self.create_list_action.triggered.connect(self.db.create_list)
+        self.list_menu.addAction(self.create_list_action)
+
+        self.delete_list_action = QAction("Löschen", self)
+        self.delete_list_action.triggered.connect(self.db.delete_list)
+        self.list_menu.addAction(self.delete_list_action)
 
         # ----- V I E W ------------------------------------------------------------------------- #
         self.view_menu = self.addMenu("Ansicht")
 
-        self.view_action = QAction("Aktulalisieren", self)
-        self.view_action.triggered.connect(self.main.update_criteria)
+        self.view_action = QAction("Aktulalisiere Kategorien", self)
+        self.view_action.triggered.connect(self.widget.update_criteria)
         self.view_menu.addAction(self.view_action)
 
         # ----- P R O P E R T I E S ------------------------------------------------------------- #

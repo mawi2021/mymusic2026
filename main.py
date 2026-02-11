@@ -4,22 +4,25 @@ from classes.MainWidget   import MainWidget, MainWindowMenu
 from classes.Db           import Db
 
 # NEXT:
-# - Kriterium: Eigene Listen füllen (wie?)
-# - Details: Intensiver auf Internetseiten nach weiteren Infos zum Titel suchen
+# - Details: Sprache-Widget Schrift teilweise weiß
+# - Listen: Umbenennen
+# - Kriterium: Suche
 
 # ToDo:
+# - Allgemein: Alle Widgets (Kriterium, Tabelle, Buttons, Details) in Klassen separieren
+# - Allgemein: Alle on_... Ereignisse zunächst an das Widget senden, in dem es ausgelöst wurde
 # - Kriterium: Anker in der Seite bei jedem Kriterium, dass beim Folding nicht immemr oben startet
-# - Kriterium: Suche
 # - Kriterium: Checkboxen bei den (ausgeklappten) Kriterien
+# - Kriterium: in Own Anzahl Titel
+# - Kriterium: lange Listen, wie bspw. Künstler in "Zwischenlisten" A B C D ...
 # - Tabelle: Anzeige, was man ausgewählt hat (Welche Liste)
 # - Tabelle: Massenänderungen
 # - Buttons: Muten / unmuten + Zustand speichern und mit Icon kenntlich machen
 # - Buttons: Zufällige Reihenfolge + Zustand speichern und mit Icon kenntlich machen
 # - Buttons: Endlosschleife + Zustand speichern und mit Icon kenntlich machen
+# - Buttons: Drücken eines Knopfes visuell sichtbar machen
 # - Details: in änderbaren Feldern Tags in MP3-Datei wegschreiben
-# - Details: Bei Änderungen an Genres Speichern in DB
 # - Details: Eigene Tags erstellen, vorhandene Tags ändern, die nur in "Weitere" enthalten sind
-# - Details: Sprache-Widget Schrift teilweise weiß
 # - Details: Eigenen Kommentar schreiben
 # - Datenbank: Verschieben und Umbenennen von Ordnern mit Datenbank synchronisieren
 # - Datenbank: Backup erstellen
@@ -33,20 +36,19 @@ class Main(QMainWindow):
         super(Main, self).__init__(parent)
         self.db        = Db(self)
         self.widget    = MainWidget(self, self.db)
-        self.menu      = MainWindowMenu(self, self.db)
+        self.menu      = MainWindowMenu(self, self.db, self.widget)
 
         self.setCentralWidget(self.widget)
         self.setMenuBar(self.menu)
         self.setWindowTitle("MyMusic")  
         self.setGeometry(200, 40, 1500, 800)
 
-        self.update_criteria()
+        self.db.set_widget(self.widget)
+        self.widget.update_criteria()
 
     def set_internet_properties(self):
         pass
-    def update_criteria(self):
-        html = self.db.get_html()
-        self.widget.set_criteria_html(html)
+
 
 def main():
     app = QApplication(sys.argv)
@@ -79,4 +81,14 @@ if __name__ == "__main__":
 #   https://cdn-icons-png.flaticon.com/128/14458/14458344.png => rotate (pink)
 # https://cdn-icons-png.flaticon.com/128/18210/18210344.png => Shuffle
 # https://cdn-icons-png.flaticon.com/128/149/149222.png => Star for voting (not filled)
+
+
+# Done:
+# - Lied zur Liste hinzufügen
+# - Listen: Löschen
+# - Details: Bei Änderungen an Genres Speichern in DB
+# - Details: Nach Erstellen einer neuen Liste ist diese nicht in der ComboBox enthalten
+# - Details: Intensiver auf Internetseiten nach weiteren Infos zum Titel suchen und
+#     in einem asynchronen Task ermitteln, während die anderen Details schon angezeigt werden
+# - Kriterium: Unbewertete mit max. Anzahl "von xxx"
 

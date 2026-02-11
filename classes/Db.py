@@ -1,6 +1,8 @@
+import asyncio
 import os
 import requests
 import sqlite3
+import threading
 from mutagen              import MutagenError
 from mutagen.easyid3      import EasyID3
 from mutagen.id3          import ID3
@@ -13,20 +15,23 @@ class Db():
         self.dir       = os.getcwd() + os.sep + "db" + os.sep
         self.conn      = None
         self.cursor    = None
+        self.widget    = None
         self.names     = {"genre"    :"Genres", 
                           "album"    :"Alben", 
                           "artist"   :"Künstler", 
                           "language" :"Sprache", 
                           "date"     :"Jahr"}
-
         self.check_database()
-
         self.folded    = self.init_folded()
+        
+        # eigenen Event-Loop im Hintergrund starten
+        loop = asyncio.new_event_loop()
+        threading.Thread(target=loop.run_forever, daemon=True).start()
 
     def add_song_to_list(self, list):
         if list == "":
             return
-        file_id = self.main.widget.detail_widgets[0].text()
+        file_id = self.widget.detail_widgets[0].text()
 
         self.cursor.execute('SELECT id FROM LISTS WHERE name = "' + list + '"')
         list_id = self.cursor.fetchone()[0]
@@ -92,7 +97,27 @@ class Db():
             else:
                 self.cursor.execute("INSERT INTO LISTS (name) VALUES ('" + name + "')")
                 self.conn.commit()
-        self.main.update_criteria()
+        self.widget.update_criteria()
+        self.widget.update_details_combo()
+    def delete_list(self):
+        items = self.get_own_lists()
+        value, ok = QInputDialog.getItem(
+            self.main,
+            "Eigene Liste löschen",
+            "Bitte eine zu löschende Liste auswählen:",
+            items,
+            0,    # Vorauswahl (Index)
+            False
+        )
+        if ok:
+            self.cursor.execute("SELECT id FROM LISTS WHERE name = '" + value + "'") 
+            row = self.cursor.fetchone()
+            if row != None:
+                list_id = row[0]
+                self.cursor.execute('DELETE FROM LIST_CONTENT WHERE list_id = ' + str(list_id))
+                self.cursor.execute('DELETE FROM LISTS WHERE id = ' + str(list_id))
+                self.conn.commit()
+                self.widget.update_details_combo()
     def delete_song_in_db(self, file_id):
         self.cursor.execute("DELETE FROM TAGS WHERE file_id = '" + str(file_id) + "'")
         self.cursor.execute("DELETE FROM FILES WHERE id = '" + str(file_id) + "'")
@@ -124,12 +149,12 @@ class Db():
         sec   = str(dauer % 60)
         result["dauer"] = str(int(dauer/60)) + ":" + str(sec.zfill(2))
 
-        # for tag in audio.tags.values():
-        #     if tag.FrameID == "APIC":  # Bild-Frame
-        #         with open("tmp.jpg", "wb") as img:
-        #             img.write(tag.data)
-        #         print(f"Bild extrahiert: {output_image}")
-        #         return True
+        # Bild
+        for tag in audio.tags.values():
+            if tag.FrameID == "APIC":  # Bild-Frame
+                with open("tmp.jpg", "wb") as img:
+                    img.write(tag.data)
+                    # TODO: show image
 
         self.cursor.execute("SELECT tag_key, tag_value FROM TAGS WHERE file_id = '" + str(file_id) + "'") 
         result["tracknumber"] = result["album"] = result["artist"] = result["title"] = ""
@@ -151,36 +176,16 @@ class Db():
             else:                           
                     result["others"] = result["others"] + line[0] + " => " + line[1] + "\n"
         
-        # Get genres from internet #
         if result["genre"] == "":
-            genre_web = []
             try:
-                query      = "artist:" + result["artist"] + " AND recording:" + result["title"]
-                url        = "https://musicbrainz.org/ws/2/recording/"
-                params     = {"query": query, "fmt": "json"}
-                headers    = {"User-Agent": "MyMusicTagger/1.0 (info@em-wee.de)"}
-                resp       = requests.get(url, params=params, headers=headers)
-                data       = resp.json()
-                first      = data["recordings"][0]
-                mbid       = first["id"]
-            
-                url        = f"https://musicbrainz.org/ws/2/recording/" + mbid
-                params     = {"inc": "genres", "fmt": "json"}
-                rec        = requests.get(url, params=params, headers=headers).json()
-                genre_web  = [g["name"] for g in rec.get("genres", [])]
+                loop = asyncio.new_event_loop()
+                threading.Thread(target=loop.run_forever, daemon=True).start()
+                asyncio.run_coroutine_threadsafe(self.get_genre(file_id, result["artist"], result["title"]), loop)
+
+                # loop = asyncio.get_running_loop()  # Laufenden Loop holen
+                # loop.create_task(self.get_genre(file_id, result["artist"], result["title"]))  # Hintergrundtask starten
             except Exception as e:
-                pass
-
-            # Update Genre in Database from Internet-DB #
-            for genre in genre_web:
-                if result["genre"] == "":
-                    result["genre"] = genre
-                else:
-                    result["genre"] = result["genre"] + ", " + genre
-                self.cursor.execute("INSERT INTO TAGS (file_id, tag_key, tag_value) VALUES('" 
-                                    + str(file_id) + "', 'genre', '" + genre + "')")
-                self.conn.commit()
-
+                print("ERROR in get_details() " + str(e))
         return result    
     def get_filename(self, file_id):
         self.cursor.execute("SELECT file_path, file_name, vote FROM FILES WHERE id = '" + str(file_id) + "'")
@@ -206,8 +211,8 @@ class Db():
             if listname == 'NULL':
                 self.cursor.execute('SELECT FILES.id FROM FILES LEFT JOIN TAGS ' + \
                                     'ON FILES.id=TAGS.file_id AND TAGS.tag_key="' + section + \
-                                    '" WHERE TAGS.file_id IS NULL ORDER BY FILES.id LIMIT 100')
-                                    # '" WHERE TAGS.file_id IS NULL ORDER BY RANDOM() LIMIT 100')
+                                    # '" WHERE TAGS.file_id IS NULL ORDER BY FILES.id LIMIT 100')
+                                    '" WHERE TAGS.file_id IS NULL ORDER BY RANDOM() LIMIT 100')
             else:
                 self.cursor.execute('SELECT file_id FROM TAGS WHERE tag_key = "' + section + '" AND tag_value LIKE "%' + listname + '%"') 
             arr = self.cursor.fetchall()
@@ -218,6 +223,54 @@ class Db():
         else:
             sign = "ᐁ"
         return "<font color='gray'>" + sign + "</font>"
+    async def get_genre(self, file_id, artist, title):
+        # Get genres from internet #
+        genre_web = []
+        try:
+            query      = "artist:" + artist + " AND recording:" + title
+            url        = "https://musicbrainz.org/ws/2/recording/"
+            params     = {"query": query, "fmt": "json"}
+            headers    = {"User-Agent": "MyMusicTagger/1.0 (info@em-wee.de)"}
+            resp       = requests.get(url, params=params, headers=headers)
+            data       = resp.json()
+
+            for record in data["recordings"]:
+                first      = record #data["recordings"][0]
+                mbid       = first["id"]                
+                url        = f"https://musicbrainz.org/ws/2/recording/" + mbid
+                params     = {"inc": "genres", "fmt": "json"}
+                rec        = requests.get(url, params=params, headers=headers).json()
+                genre_web  = [g["name"] for g in rec.get("genres", [])]
+                if len(genre_web) > 0:
+                    break
+        except Exception as e:
+            pass
+
+        # Update Genre in Database from Internet-DB #
+        genre_str = ""
+        if len(genre_web) <= 0:
+            genre_web.append("?")
+        for genre in genre_web:
+            if genre_str == "":
+                genre_str = genre
+            else:
+                genre_str = genre_str + ", " + genre
+            try:
+                db_file = self.dir + "mymusic.db"
+                conn = sqlite3.connect(db_file)
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO TAGS (file_id, tag_key, tag_value) VALUES('" 
+                                    + str(file_id) + "', 'genre', '" + genre + "')")
+                conn.commit()
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print("ERROR in get_genre(): " + str(e))
+
+        # adjust details control, if not shown data changed
+        if genre_str != "":  
+            if self.widget.get_file_id() == file_id:
+                self.widget.fill_genre(genre_str)
     def get_html(self):
         html = "<!DOCTYPE html><html><head></head><body>"     # Page Intro #
 
@@ -239,7 +292,9 @@ class Db():
                 if row[0] != None:
                     cnt = cnt + 1
                     html = html + '<br><a href="vote_' + str(row[0]) + '">' + str(row[0]) + " Sterne (" + str(row[1]) + ")</a>"
-            html = html + '<br><a href="vote_NULL">Unbewertete (max. 100)</a>'
+            self.cursor.execute("SELECT COUNT(*) FROM FILES WHERE vote IS NULL")
+            num = self.cursor.fetchone()[0]
+            html = html + '<br><a href="vote_NULL">Unbewertete (max. 100 von ' + str(num) + ')</a>'
 
         name = ""
         for key in self.folded:                                                                     # TAG-criteria #
@@ -349,6 +404,8 @@ class Db():
     def set_vote(self, file_id, vote):
         self.cursor.execute("UPDATE FILES SET vote='" + str(vote) + "' WHERE id = '" + str(file_id) + "'") 
         self.conn.commit()
+    def set_widget(self, widget):
+        self.widget = widget
     def toggle_fold(self, listname):
         if self.folded[listname] == "is_folded":
             self.folded[listname] = "is_open"
